@@ -1,0 +1,33 @@
+version: '2'
+services:
+  db:
+    image: postgres
+    container_name: db-name
+
+    env_file:
+      - ./docker_db.env
+
+  app:
+    image: codelittinc/application_name
+    env_file:
+      - ./docker_app.env
+
+    expose:
+      - 'port_number'
+
+    links:
+      - db
+
+  nginx:
+    image: nginx
+    container_name: nginx
+    ports:
+     - '80:80'
+     - '443:443'
+
+    links:
+      - app
+
+    volumes: 
+     - /etc/nginx-docker/:/etc/nginx/
+

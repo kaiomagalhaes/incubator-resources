@@ -1,0 +1,6 @@
+sleep 20;
+docker stop green_app
+docker rm green_app
+# turn the blue machine into the green one
+docker rename blue_app green_app;
+

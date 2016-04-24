@@ -1,0 +1,9 @@
+# get blue machine ip
+BLUE_IP=$(docker exec blue_app ifconfig eth0 | grep 'inet addr:' | cut -d: -f2 | awk '{ print $1}')
+# get green machine ip
+GREEN_IP=$(docker exec green_app ifconfig eth0 | grep 'inet addr:' | cut -d: -f2 | awk '{ print $1}')
+# redirect routes from the GREEN machine to the BLUE machine
+sed -i -e "s/${BLUE_IP}/${GREEN_IP}/g" /etc/nginx-docker/conf.d/default.conf
+# reload nginx configuration
+docker exec nginx service nginx reload
+
