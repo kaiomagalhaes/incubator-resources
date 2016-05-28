@@ -26,6 +26,7 @@ You should never be logging on to a server as root. We follow a similar conventi
     mkdir /home/deploy
     mkdir /home/deploy/.ssh
     chmod 700 /home/deploy/.ssh 
+    
 
 Remember `chmod 700` means that owner can read, write, execute. We're still root but in a minute we'll recursively `chown` this folder for the deploy user and deploy group. Only this user should have access to do anything with the .ssh folder.
 
@@ -67,6 +68,9 @@ Add the `deploy` user below the `root` user as shown below. Make sure to comment
     root    ALL=(ALL) ALL
     deploy  ALL=(ALL) ALL
 
+Setup your prefered shell for the deploy user, here we use bash:
+
+    usermod -s /bin/bash deploy
 
 
 ###Enforce ssh key logins
