@@ -1,15 +1,108 @@
-# update docker image to latest
-docker pull codelittinc/app_name
-# run blue machine
-docker-compose scale app=2
-# set name to blue machine
-docker rename deploy_app_2 blue_app;
-# get blue machine ip
-BLUE_IP=$(docker exec blue_app ifconfig eth0 | grep 'inet addr:' | cut -d: -f2 | awk '{ print $1}')
-# get green machine ip
-GREEN_IP=$(docker exec green_app ifconfig eth0 | grep 'inet addr:' | cut -d: -f2 | awk '{ print $1}')
-# redirect routes from the GREEN machine to the BLUE machine
-sed -i -e "s/${GREEN_IP}/${BLUE_IP}/g" /etc/nginx-docker/conf.d/default.conf
-# reload nginx configuration
-docker exec nginx service nginx reload
+BLUE_NAME="blue_$SERVICE_NAME";
+GREEN_NAME="green_$SERVICE_NAME";
+RAW_NAME_REGEX='deploy.*';
+BLUE_NAME_REGEX='blue.*';
+GREEN_NAME_REGEX='green.*';
 
+container_with_name() { echo $(docker ps -a | grep -o $1); }
+
+app_raw() { echo $(container_with_name $RAW_NAME_REGEX); }
+
+app_blue() { echo $(container_with_name $BLUE_NAME_REGEX); }
+
+app_green() { echo $(container_with_name $GREEN_NAME_REGEX); }
+
+rename_container() { docker rename $1 $2; }
+
+container_ip() { echo $(docker exec $1 ifconfig eth0 | grep 'inet addr:' | cut -d: -f2 | awk '{ print $1}'); }
+
+blue_ip() { echo "$(container_ip $BLUE_NAME)"; }
+
+green_ip() { echo "$(container_ip $GREEN_NAME)"; }
+
+init_green() {
+  echo "Great! We are going to setup your application!";
+  echo "Running your docker-compose file";
+  docker-compose up -d;
+  rename_container "$(app_raw)" $GREEN_NAME;
+  run_rails_specifics
+}
+
+init_blue() {
+  echo "Running your docker-compose file for the given application";
+  eval "docker-compose scale $SERVICE_NAME=2"
+  rename_container "$(app_raw)" $BLUE_NAME
+  run_rails_specifics
+  echo "Updating nginx"
+  sed -i -e "s/$(green_ip)/$(blue_ip)/g" /etc/nginx-docker/conf.d/default.conf
+}
+
+set_blue_as_green() {
+  rename_container $GREEN_NAME "old_$GREEN_NAME"
+  rename_container $BLUE_NAME "$GREEN_NAME"
+}
+
+run_rails_specifics() {
+  if [ "$RAILS_APPLICATION" ]; then
+    if [ "$RUN_MIGRATIONS" ]; then
+      echo "We are going to run the new migrations, wait a little bit!"
+      docker exec "$(app_green)" rake db:create;
+      docker exec "$(app_green)" rake db:migrate;
+    fi
+  fi
+}
+
+################# BEGIN OF VALIDATIONS ##################
+
+if [ -z "$SERVICE_NAME" ]; then
+  echo "You need to setup the variable SERVICE_NAME with the service application name in your docker-compose.yml";
+  exit 0;
+fi
+
+if [ "$(app_raw)" ]; then
+  echo "You should not have an container which name matches: .*deploy.*";
+  exit 0;
+fi
+
+if ! test -f "./docker-compose.yml"; then
+  echo "You need to have a docker-compose.yml file!";
+  exit 0;
+fi
+
+#########################################################
+
+# If it doesn't find a green or a blue app it asks to init the project with a green one
+if [ -z "$(app_blue)" -a -z "$(app_green)" ]; then
+  echo -n "Seems that you have no application in production, do you want to setup it now? (y/n)?"
+  read answer
+
+  if echo "$answer" | grep -iq "^y" ;then
+    init_green
+  else
+    echo no
+  fi
+fi
+
+# If it finds a green application it asks if it should init a blue one
+if [ "$(app_green)" -a -z "$(app_blue)" ]; then
+  echo -n "Seems that you have a green application, do you want to setup a blue one? (y/n)?"
+  read answer
+
+  if echo "$answer" | grep -iq "^y" ;then
+    init_blue;
+  else
+    echo no
+  fi
+fi
+
+# If it finds a green and a blue application it asks if it should setup the blue as the green and remove the green 
+if [ "$(app_green)" -a "$(app_blue)" ]; then
+  echo -n "Seems that you have a green and a blue application, is everything right? do you want to setup the blue as the green? it will remove the green. (y/n)?"
+  read answer
+
+  if echo "$answer" | grep -iq "^y" ;then
+    set_blue_as_green
+  else
+    echo no
+  fi
+fi
